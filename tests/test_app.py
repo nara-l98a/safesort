@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from safesort.app import (HISTORY_NAME, apply_moves, category_for, main,
@@ -85,6 +86,23 @@ class SafeSortTests(unittest.TestCase):
             parse_category_override("pdf=Reading")
         with self.assertRaisesRegex(ValueError, "single"):
             plan_moves(self.root, category_overrides={".pdf": "../outside"})
+
+    def test_undo_rejects_history_path_escape(self):
+        outside = self.root.parent / "outside.txt"
+        outside.write_text("do not touch")
+        history = self.root / HISTORY_NAME
+        history.write_text(json.dumps({
+            "event": "batch", "id": "fake",
+            "moves": [{"source": "../outside.txt", "destination": "Documents/outside.txt"}],
+        }) + "\n")
+        with self.assertRaisesRegex(ValueError, "escapes"):
+            undo_last(self.root)
+        self.assertEqual(outside.read_text(), "do not touch")
+
+    def test_undo_rejects_malformed_history_record(self):
+        (self.root / HISTORY_NAME).write_text("[]\n")
+        with self.assertRaisesRegex(ValueError, "records must be objects"):
+            undo_last(self.root)
 
 
 if __name__ == "__main__":

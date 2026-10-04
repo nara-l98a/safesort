@@ -111,6 +111,20 @@ def _relative(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
+def _journal_target(root: Path, value: object, field: str) -> Path:
+    """Resolve a journal path while refusing absolute or root-escaping paths."""
+    if not isinstance(value, str) or not value or Path(value).is_absolute():
+        raise ValueError(f"invalid history {field} path")
+    target = (root / value).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"history {field} path escapes the selected directory") from exc
+    if target == root:
+        raise ValueError(f"invalid history {field} path")
+    return target
+
+
 def apply_moves(root: str | Path, moves: list[Move]) -> str | None:
     root = Path(root).expanduser().resolve()
     if not moves:
@@ -148,11 +162,23 @@ def undo_last(root: str | Path) -> int:
         entries = [json.loads(line) for line in journal_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"cannot read history journal: {exc}") from exc
+    if any(not isinstance(entry, dict) for entry in entries):
+        raise ValueError("cannot read history journal: records must be objects")
     undone = {e.get("id") for e in entries if e.get("event") == "undo"}
     batch = next((e for e in reversed(entries) if e.get("event") == "batch" and e.get("id") not in undone), None)
     if not batch:
         raise ValueError("there are no unapplied moves to undo")
-    moves = [(root / item["destination"], root / item["source"]) for item in reversed(batch["moves"])]
+    if not isinstance(batch, dict) or not isinstance(batch.get("moves"), list):
+        raise ValueError("cannot read history journal: invalid batch record")
+    try:
+        moves = [(_journal_target(root, item["destination"], "destination"),
+                  _journal_target(root, item["source"], "source"))
+                 for item in reversed(batch["moves"])
+                 if isinstance(item, dict)]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"cannot read history journal: invalid batch paths ({exc})") from exc
+    if len(moves) != len(batch["moves"]):
+        raise ValueError("cannot read history journal: invalid move record")
     for current, original in moves:
         if not current.exists():
             raise ValueError(f"cannot undo; moved file is missing: {current}")
