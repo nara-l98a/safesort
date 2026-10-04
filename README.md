@@ -10,8 +10,8 @@ SafeSort tidies a downloads or project folder into type-based subfolders. It is 
 ## Install
 
 ```bash
-git clone https://github.com/nara-l98a/safesort-cli.git
-cd safesort-cli
+git clone https://github.com/nara-l98a/safesort.git
+cd safesort
 python3 -m venv .venv
 . .venv/bin/activate
 pip install .
