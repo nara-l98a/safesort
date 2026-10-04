@@ -83,6 +83,8 @@ class SafeSortTests(unittest.TestCase):
             parse_category_override(".pdf=../outside")
         with self.assertRaisesRegex(ValueError, "look like"):
             parse_category_override("pdf=Reading")
+        with self.assertRaisesRegex(ValueError, "single"):
+            plan_moves(self.root, category_overrides={".pdf": "../outside"})
 
 
 if __name__ == "__main__":

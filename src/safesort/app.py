@@ -72,6 +72,10 @@ def plan_moves(root: str | Path, recursive: bool = False,
     root = Path(root).expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f"not a directory: {root}")
+    overrides = {}
+    for extension, category in (category_overrides or {}).items():
+        normalized_extension, safe_category = parse_category_override(f"{extension}={category}")
+        overrides[normalized_extension] = safe_category
     if recursive:
         def walk_files():
             for current, directories, filenames in os.walk(root, followlinks=False):
@@ -94,7 +98,7 @@ def plan_moves(root: str | Path, recursive: bool = False,
         relative = source.relative_to(root).as_posix()
         if any(fnmatchcase(relative, pattern) or fnmatchcase(source.name, pattern) for pattern in patterns):
             continue
-        target_dir = root / category_for(source, category_overrides)
+        target_dir = root / category_for(source, overrides)
         if source.parent == target_dir:
             continue
         destination = _free_destination(target_dir / source.name, reserved)
