@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from fnmatch import fnmatchcase
 import json
 import os
 import shutil
@@ -32,8 +33,10 @@ class Move:
     destination: Path
 
 
-def category_for(path: Path) -> str:
+def category_for(path: Path, overrides: dict[str, str] | None = None) -> str:
     ext = path.suffix.lower()
+    if overrides and ext in overrides:
+        return overrides[ext]
     for category, extensions in CATEGORIES.items():
         if ext in extensions:
             return category
@@ -52,7 +55,20 @@ def _free_destination(path: Path, reserved: set[Path]) -> Path:
         index += 1
 
 
-def plan_moves(root: str | Path, recursive: bool = False) -> list[Move]:
+def parse_category_override(value: str) -> tuple[str, str]:
+    """Parse EXTENSION=CATEGORY while preventing category path traversal."""
+    extension, separator, category = value.partition("=")
+    extension, category = extension.strip().lower(), category.strip()
+    if not separator or not extension.startswith(".") or len(extension) < 2:
+        raise ValueError("category mapping must look like .ext=Category")
+    if not category or category in {".", ".."} or "/" in category or "\\" in category:
+        raise ValueError("category name must be a single non-empty folder name")
+    return extension, category
+
+
+def plan_moves(root: str | Path, recursive: bool = False,
+               category_overrides: dict[str, str] | None = None,
+               exclude_patterns: list[str] | None = None) -> list[Move]:
     root = Path(root).expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f"not a directory: {root}")
@@ -71,10 +87,14 @@ def plan_moves(root: str | Path, recursive: bool = False) -> list[Move]:
         candidates = (p for p in root.iterdir() if p.is_file() and not p.is_symlink())
     reserved: set[Path] = set()
     moves = []
+    patterns = [pattern for pattern in (exclude_patterns or []) if pattern]
     for source in sorted(candidates, key=lambda p: str(p).casefold()):
         if source.name == HISTORY_NAME:
             continue
-        target_dir = root / category_for(source)
+        relative = source.relative_to(root).as_posix()
+        if any(fnmatchcase(relative, pattern) or fnmatchcase(source.name, pattern) for pattern in patterns):
+            continue
+        target_dir = root / category_for(source, category_overrides)
         if source.parent == target_dir:
             continue
         destination = _free_destination(target_dir / source.name, reserved)
@@ -156,6 +176,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="safesort", description="Organize files into type folders, safely and locally.")
     parser.add_argument("directory", nargs="?", default=".", help="directory to organize (default: current directory)")
     parser.add_argument("--recursive", action="store_true", help="include files in subdirectories (flatten into type folders)")
+    parser.add_argument("--exclude", action="append", default=[], metavar="GLOB",
+                        help="skip paths matching a glob (repeatable; matches path or filename)")
+    parser.add_argument("--category", action="append", default=[], metavar=".EXT=NAME",
+                        help="override an extension category (repeatable, e.g. .pdf=Reading)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true", help="perform the previewed moves")
     mode.add_argument("--undo", action="store_true", help="undo the most recent SafeSort batch")
@@ -170,7 +194,8 @@ def main(argv: list[str] | None = None) -> int:
             count = undo_last(root)
             print(f"Undid {count} move(s).")
             return 0
-        moves = plan_moves(root, args.recursive)
+        overrides = dict(parse_category_override(item) for item in args.category)
+        moves = plan_moves(root, args.recursive, overrides, args.exclude)
         if not moves:
             print("Nothing to organize.")
             return 0

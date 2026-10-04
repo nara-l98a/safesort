@@ -30,6 +30,9 @@ safesort ~/Downloads --apply
 
 # Restore files moved by the latest SafeSort batch.
 safesort ~/Downloads --undo
+
+# Customize file placement and skip sensitive exports; both options are repeatable.
+safesort ~/Downloads --category .pdf=Reading --category .epub=Reading --exclude "private-*"
 ```
 
 Example preview:
@@ -43,6 +46,8 @@ Preview only: 3 move(s). Re-run with --apply to proceed.
 ```
 
 `--recursive` includes files in subdirectories and flattens them into the category folders. Without it, only files directly inside the chosen directory are considered. Recursive scanning skips `.git`, `.hg`, `.svn`, `.venv`, `node_modules`, and `__pycache__` directories, and does not follow symlinked directories. If a name already exists, SafeSort selects `name (1).ext`, `name (2).ext`, etc.; it will not intentionally overwrite an existing file. Directories themselves are never moved. Extension matching is case-insensitive.
+
+`--category .EXT=Folder` overrides a built-in category (extension matching is case-insensitive); the folder must be a single name and cannot escape the selected root. `--exclude GLOB` skips matching relative paths or file names, and can be repeated. Exclusions apply to both direct and recursive scans. Review the preview before applying a customized plan.
 
 ## Categories
 
@@ -59,6 +64,7 @@ Images, Documents, Spreadsheets, Presentations, Archives, Audio, Video, Code, Ot
 ## Development and tests
 
 ```bash
+python -m pip install -e .
 python -m unittest discover -s tests -v
 ```
 

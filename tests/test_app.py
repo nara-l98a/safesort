@@ -2,7 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from safesort.app import HISTORY_NAME, apply_moves, category_for, main, plan_moves, undo_last
+from safesort.app import (HISTORY_NAME, apply_moves, category_for, main,
+                          parse_category_override, plan_moves, undo_last)
 
 
 class SafeSortTests(unittest.TestCase):
@@ -69,6 +70,19 @@ class SafeSortTests(unittest.TestCase):
 
     def test_missing_directory_rejected(self):
         self.assertEqual(main([str(self.root / "missing")]), 2)
+
+    def test_custom_category_and_glob_exclusion(self):
+        (self.root / "manual.pdf").write_text("read")
+        (self.root / "private.pdf").write_text("skip")
+        (self.root / "keep.txt").write_text("keep")
+        overrides = dict([parse_category_override(".PDF=Reading")])
+        moves = plan_moves(self.root, category_overrides=overrides, exclude_patterns=["private.*"])
+        self.assertEqual(sorted((m.source.name, m.destination.parent.name) for m in moves),
+                         [("keep.txt", "Documents"), ("manual.pdf", "Reading")])
+        with self.assertRaisesRegex(ValueError, "single"):
+            parse_category_override(".pdf=../outside")
+        with self.assertRaisesRegex(ValueError, "look like"):
+            parse_category_override("pdf=Reading")
 
 
 if __name__ == "__main__":
